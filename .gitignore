@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+output/*.csv
+output/*.parquet
+logs/*.log
+input/~$*.xlsx

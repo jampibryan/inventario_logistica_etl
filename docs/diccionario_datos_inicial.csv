@@ -1,0 +1,23 @@
+columna_original,nombre_tecnico,tipo_dato,tabla_destino,observaciones
+SEM,semana,entero,fact_compras_logistica,Semana operativa reportada en la hoja
+COD,cod_material,texto,dim_material,Codigo unico del material
+MATERIAL,material,texto,dim_material,Descripcion del material
+UND MED,unidad_medida,texto,dim_material,Unidad de medida homologada
+CANT.,cantidad,decimal,fact_compras_logistica,Cantidad comprada
+PU SOLES,pu_soles,decimal,fact_compras_logistica,Precio unitario en soles
+IMPORTE SO,importe_soles,decimal,fact_compras_logistica,Importe total en soles
+PU USD,pu_usd,decimal,fact_compras_logistica,Precio unitario en USD
+IMPORTE US,importe_usd,decimal,fact_compras_logistica,Importe total en USD
+TOTAL P.UNIT US$,total_punit_usd,decimal,fact_compras_logistica,Precio unitario total homologado en USD
+IMPORTE TOTAL US$,importe_total_usd,decimal,fact_compras_logistica,Importe total homologado en USD
+SOLICITANTE,area_solicitante,texto,dim_area,Area o solicitante del requerimiento
+REFERENCIA,referencia,texto,fact_compras_logistica,Referencia operativa o comentario
+PROVEEDOR,proveedor,texto,dim_proveedor,Nombre del proveedor
+FORMA DE PAGO,forma_pago,texto,fact_compras_logistica,Condicion o medio de pago
+ESTADO RECEPCION,estado_recepcion,texto,dim_estado,Estado de recepcion del pedido
+FECHA RECEPCION,fecha_recepcion,fecha,fact_compras_logistica,Fecha real de recepcion
+FECHA PROG ENTREGA,fecha_prog_entrega,fecha,fact_compras_logistica,Fecha programada de entrega
+NRO ORDEN DE COMPRA,nro_oc,texto,fact_compras_logistica,Numero de orden de compra
+FECHA OC,fecha_oc,fecha,fact_compras_logistica,Fecha de la orden de compra
+# GUIA,nro_guia,texto,fact_compras_logistica,Numero de guia
+# FACTURA,nro_factura,texto,fact_compras_logistica,Numero de factura

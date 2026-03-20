@@ -2,10 +2,12 @@
 from pathlib import Path
 
 import pandas as pd
+from openpyxl.styles import numbers
 
 from config import (
     AUDIT_EXCEL_NAME,
     CONTROL_FILE,
+    DATE_COLUMNS,
     DW_DIR,
     OVERWRITE_OUTPUTS,
     PROCESSED_AUDIT_DIR,
@@ -14,6 +16,10 @@ from config import (
     REVIEW_EXCEL_NAME,
     VISUAL_COLUMN_NAMES,
 )
+
+
+OUTPUT_DATE_COLUMNS = set(DATE_COLUMNS + ["fecha"])
+EXCEL_DATE_FORMAT = "dd/mm/yyyy"
 
 
 def _clear_directory_files(directory: Path, patterns: list[str]) -> None:
@@ -31,12 +37,54 @@ def _clear_directory_files(directory: Path, patterns: list[str]) -> None:
                 logging.warning("No se pudo eliminar %s porque esta abierto en otro proceso", file_path.name)
 
 
+def reset_runtime_artifacts(clear_control: bool = False) -> None:
+    """Remove generated outputs before a force run."""
+    _clear_directory_files(PROCESSED_EXCEL_DIR, ["*.xlsx"])
+    _clear_directory_files(PROCESSED_AUDIT_DIR, ["*.xlsx"])
+    _clear_directory_files(DW_DIR, ["*.parquet", "*.csv"])
+
+    if clear_control and CONTROL_FILE.exists():
+        try:
+            CONTROL_FILE.unlink()
+        except PermissionError:
+            logging.warning("No se pudo eliminar %s porque esta abierto en otro proceso", CONTROL_FILE.name)
+
+
+def _convert_date_columns_for_output(df: pd.DataFrame) -> pd.DataFrame:
+    output_df = df.copy()
+    candidate_columns = [column for column in OUTPUT_DATE_COLUMNS if column in output_df.columns]
+
+    for column in candidate_columns:
+        if pd.api.types.is_datetime64_any_dtype(output_df[column]):
+            output_df[column] = output_df[column].dt.date
+
+    return output_df
+
+
 def _build_review_dataframe(clean_df: pd.DataFrame) -> pd.DataFrame:
     ordered_columns = [column for column in REVIEW_COLUMN_ORDER if column in clean_df.columns]
     remaining_columns = [column for column in clean_df.columns if column not in ordered_columns]
     review_df = clean_df[ordered_columns + remaining_columns].copy()
+    review_df = _convert_date_columns_for_output(review_df)
     review_df = review_df.rename(columns=VISUAL_COLUMN_NAMES)
     return review_df
+
+
+def _apply_excel_date_format(worksheet, headers: list[str]) -> None:
+    visual_date_headers = {
+        VISUAL_COLUMN_NAMES[column]
+        for column in DATE_COLUMNS
+        if column in VISUAL_COLUMN_NAMES
+    }
+
+    for column_index, header in enumerate(headers, start=1):
+        if header not in visual_date_headers:
+            continue
+
+        for row in worksheet.iter_rows(min_row=2, min_col=column_index, max_col=column_index):
+            cell = row[0]
+            if cell.value is not None:
+                cell.number_format = EXCEL_DATE_FORMAT
 
 
 def export_review_outputs(clean_df: pd.DataFrame, audit_df: pd.DataFrame, source_file) -> None:
@@ -50,7 +98,11 @@ def export_review_outputs(clean_df: pd.DataFrame, audit_df: pd.DataFrame, source
     clean_output_path = PROCESSED_EXCEL_DIR / REVIEW_EXCEL_NAME
     audit_output_path = PROCESSED_AUDIT_DIR / AUDIT_EXCEL_NAME
 
-    review_df.to_excel(clean_output_path, index=False)
+    with pd.ExcelWriter(clean_output_path, engine="openpyxl") as writer:
+        review_df.to_excel(writer, index=False, sheet_name="datos")
+        worksheet = writer.sheets["datos"]
+        _apply_excel_date_format(worksheet, list(review_df.columns))
+
     with pd.ExcelWriter(audit_output_path, engine="openpyxl") as writer:
         audit_df.to_excel(writer, sheet_name="resumen", index=False)
 
@@ -68,14 +120,16 @@ def export_tables(
     _clear_directory_files(DW_DIR, ["*.parquet", "*.csv"])
 
     for table_name, df in tables.items():
+        output_df = _convert_date_columns_for_output(df)
+
         if export_parquet:
             parquet_path = DW_DIR / f"{table_name}.parquet"
-            df.to_parquet(parquet_path, index=False)
+            output_df.to_parquet(parquet_path, index=False)
             logging.info("Parquet generado: %s", parquet_path.name)
 
         if export_csv:
             csv_path = DW_DIR / f"{table_name}.csv"
-            df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+            output_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
             logging.info("CSV generado: %s", csv_path.name)
 
 

@@ -26,6 +26,7 @@ AREA_DIM_NAME = "dim_area"
 SUPPLIER_DIM_NAME = "dim_proveedor"
 MATERIAL_DIM_NAME = "dim_material"
 STATUS_DIM_NAME = "dim_estado"
+PAYMENT_DIM_NAME = "dim_forma_pago"
 
 EXPORT_CSV = False
 EXPORT_PARQUET = True
@@ -36,6 +37,13 @@ ID_COLUMNS = {
     "proveedor": "id_proveedor",
     "material": "id_material",
     "estado": "id_estado",
+    "forma_pago": "id_forma_pago",
+}
+
+DATE_KEY_COLUMNS = {
+    "fecha_oc": "id_fecha_oc",
+    "fecha_programada_entrega": "id_fecha_programada_entrega",
+    "fecha_recepcion": "id_fecha_recepcion",
 }
 
 DATE_COLUMNS = [
@@ -43,6 +51,9 @@ DATE_COLUMNS = [
     "fecha_recepcion",
     "fecha_programada_entrega",
 ]
+
+MIN_VALID_YEAR = 2024
+MAX_VALID_YEAR = 2030
 
 NUMERIC_COLUMNS = [
     "precio_unitario_soles",
@@ -78,8 +89,28 @@ CRITICAL_FACT_COLUMNS = [
     "codigo",
     "material",
     "cantidad",
+    "solicitante",
     "proveedor",
+    "forma_pago",
+    "estado_recepcion",
     "fecha_oc",
+]
+
+REQUIRED_FACT_COLUMNS = [
+    "semana",
+    "codigo",
+    "material",
+    "cantidad",
+    "solicitante",
+    "proveedor",
+    "forma_pago",
+    "estado_recepcion",
+    "fecha_oc",
+]
+
+COST_COLUMNS = [
+    "importe_soles",
+    "importe_usd",
 ]
 
 COLUMN_MAPPING = {
@@ -133,10 +164,10 @@ VISUAL_COLUMN_NAMES = {
     "proveedor": "PROVEEDOR",
     "forma_pago": "FORMA DE PAGO",
     "estado_recepcion": "ESTADO RECEPCIÓN",
-    "fecha_recepcion": "FECHA RECEPCIÓN",
-    "fecha_programada_entrega": "FECHA PROGRAMADA ENTREGA",
-    "nro_oc": "NRO OC",
     "fecha_oc": "FECHA OC",
+    "fecha_programada_entrega": "FECHA PROGRAMADA ENTREGA",
+    "fecha_recepcion": "FECHA RECEPCIÓN",
+    "nro_oc": "NRO ORDEN DE COMPRA",
     "nro_guia": "NRO GUÍA",
     "nro_factura": "NRO FACTURA",
     "comentarios": "COMENTARIOS",
@@ -159,10 +190,10 @@ REVIEW_COLUMN_ORDER = [
     "proveedor",
     "forma_pago",
     "estado_recepcion",
-    "fecha_recepcion",
-    "fecha_programada_entrega",
-    "nro_oc",
     "fecha_oc",
+    "fecha_programada_entrega",
+    "fecha_recepcion",
+    "nro_oc",
     "nro_guia",
     "nro_factura",
     "comentarios",

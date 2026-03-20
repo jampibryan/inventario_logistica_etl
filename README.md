@@ -25,30 +25,40 @@ Las dependencias del proyecto estan definidas en `requirements.txt`.
 
 ## Preparacion del entorno
 
-El proyecto usa un entorno virtual local llamado `.venv`.
+El proyecto usa un entorno virtual local llamado `venv`.
 
 Si necesitas crearlo desde cero:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install --upgrade pip
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 ## Como ejecutar el programa
 
-Opcion recomendada:
+Ejecucion normal:
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-python main.py
+.\venv\Scripts\python.exe main.py
 ```
 
-Tambien puedes ejecutarlo directamente asi:
+Ejecucion con limpieza total:
 
 ```powershell
-.\.venv\Scripts\python.exe main.py
+.\venv\Scripts\python.exe main.py --force
 ```
+
+## Que hace `--force`
+
+Cuando usas `--force`, el programa:
+
+- elimina los archivos generados en `PROCESADOS/Excel`
+- elimina los archivos generados en `PROCESADOS/Auditoria`
+- elimina los archivos `.parquet` de `DW`
+- reinicia `control_procesamiento.csv`
+- reinicia `etl.log`
+- vuelve a generar todo desde cero
 
 ## Archivo de entrada
 
@@ -89,15 +99,6 @@ REPORTE/
 \- control_procesamiento.csv
 ```
 
-## Comportamiento actual
-
-- El Excel limpio siempre se genera con el nombre `PTTO 2026 ETL.xlsx`.
-- La auditoria siempre se genera con el nombre `PTTO 2026 AUDITORIA.xlsx`.
-- Los archivos `.parquet` de `DW` se reemplazan en cada corrida.
-- El archivo `control_procesamiento.csv` guarda historial de ejecuciones.
-- El log tecnico queda en la carpeta `LOGS`.
-
 ## Nota importante
 
 Si alguno de los archivos Excel de salida esta abierto mientras corre el proceso, Windows puede bloquear su reemplazo. En ese caso, cierra el archivo y vuelve a ejecutar el ETL.
-

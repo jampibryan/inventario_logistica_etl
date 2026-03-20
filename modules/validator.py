@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from config import CRITICAL_FACT_COLUMNS, FACT_TABLE_NAME
+from config import CRITICAL_FACT_COLUMNS, DATE_COLUMNS, FACT_TABLE_NAME, MAX_VALID_YEAR, MIN_VALID_YEAR
 
 
 AUDIT_COLUMNS = ["tipo", "tabla", "campo", "valor", "detalle"]
@@ -63,6 +63,22 @@ def validate_tables(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
                 "campo": column,
                 "valor": null_count,
                 "detalle": "conteo_nulos",
+            }
+        )
+
+    for column in DATE_COLUMNS:
+        if column not in fact_df.columns:
+            continue
+
+        valid_dates = fact_df[column].dropna()
+        out_of_range_count = int(((valid_dates.dt.year < MIN_VALID_YEAR) | (valid_dates.dt.year > MAX_VALID_YEAR)).sum())
+        audit_rows.append(
+            {
+                "tipo": "fechas_fuera_rango",
+                "tabla": FACT_TABLE_NAME,
+                "campo": column,
+                "valor": out_of_range_count,
+                "detalle": f"rango_permitido_{MIN_VALID_YEAR}_{MAX_VALID_YEAR}",
             }
         )
 

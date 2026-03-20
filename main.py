@@ -1,14 +1,18 @@
-import logging
+﻿import logging
+from pathlib import Path
 
 import pandas as pd
 
-from config import EXPORT_CSV, EXPORT_PARQUET, LOG_DIR
+from config import EXPORT_CSV, EXPORT_PARQUET, LOG_DIR, ORIGINAL_DIR
 from modules.cleaner import clean_logistics_data
 from modules.dimensions import build_dimensions
 from modules.extractor import extract_budget_sheet
-from modules.loader import export_tables
+from modules.loader import export_review_outputs, export_tables, update_control_file
 from modules.transformer import build_fact_table
 from modules.validator import validate_tables
+
+
+DEFAULT_SOURCE_PLACEHOLDER = ORIGINAL_DIR / "archivo_fuente.xlsx"
 
 
 def configure_logging() -> None:
@@ -24,14 +28,22 @@ def configure_logging() -> None:
 
 
 def run_etl() -> dict[str, pd.DataFrame]:
-    raw_df = extract_budget_sheet()
+    source_file, raw_df = extract_budget_sheet()
     clean_df = clean_logistics_data(raw_df)
     fact_df = build_fact_table(clean_df)
     dims = build_dimensions(fact_df)
 
     tables = {"fact_compras_logistica": fact_df, **dims}
-    validate_tables(tables)
+    audit_df = validate_tables(tables)
+    export_review_outputs(clean_df, audit_df, source_file)
     export_tables(tables, export_csv=EXPORT_CSV, export_parquet=EXPORT_PARQUET)
+    update_control_file(
+        source_file=source_file,
+        status="OK",
+        rows_read=len(raw_df),
+        rows_fact=len(fact_df),
+        message="Proceso completado correctamente.",
+    )
     return tables
 
 
@@ -43,7 +55,20 @@ if __name__ == "__main__":
         logging.info("ETL finalizado. Tablas generadas: %s", ", ".join(tables.keys()))
     except FileNotFoundError as exc:
         logging.error("%s", exc)
-        logging.info("Coloca el archivo Excel fuente dentro de la carpeta input y vuelve a ejecutar.")
-    except Exception:
+        update_control_file(
+            source_file=Path(getattr(exc, "filename", "") or DEFAULT_SOURCE_PLACEHOLDER),
+            status="ERROR",
+            rows_read=0,
+            rows_fact=0,
+            message=str(exc),
+        )
+    except Exception as exc:
         logging.exception("El ETL termino con error")
+        update_control_file(
+            source_file=DEFAULT_SOURCE_PLACEHOLDER,
+            status="ERROR",
+            rows_read=0,
+            rows_fact=0,
+            message=str(exc),
+        )
         raise

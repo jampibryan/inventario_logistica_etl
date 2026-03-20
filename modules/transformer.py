@@ -1,4 +1,4 @@
-import pandas as pd
+﻿import pandas as pd
 
 from config import ID_COLUMNS
 
@@ -6,23 +6,23 @@ from config import ID_COLUMNS
 FACT_COLUMNS = [
     "id_compra",
     "semana",
-    "cod_material",
+    "codigo",
     "material",
     "unidad_medida",
     "cantidad",
-    "pu_soles",
+    "precio_unitario_soles",
     "importe_soles",
-    "pu_usd",
+    "precio_unitario_usd",
     "importe_usd",
-    "total_punit_usd",
+    "total_precio_unit_usd",
     "importe_total_usd",
-    "area_solicitante",
+    "solicitante",
     "referencia",
     "proveedor",
     "forma_pago",
     "estado_recepcion",
     "fecha_recepcion",
-    "fecha_prog_entrega",
+    "fecha_programada_entrega",
     "nro_oc",
     "fecha_oc",
     "nro_guia",

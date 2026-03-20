@@ -1,23 +1,23 @@
-columna_original,nombre_tecnico,tipo_dato,tabla_destino,observaciones
-SEM,semana,entero,fact_compras_logistica,Semana operativa reportada en la hoja
-COD,cod_material,texto,dim_material,Codigo unico del material
-MATERIAL,material,texto,dim_material,Descripcion del material
-UND MED,unidad_medida,texto,dim_material,Unidad de medida homologada
-CANT.,cantidad,decimal,fact_compras_logistica,Cantidad comprada
-PU SOLES,pu_soles,decimal,fact_compras_logistica,Precio unitario en soles
-IMPORTE SO,importe_soles,decimal,fact_compras_logistica,Importe total en soles
-PU USD,pu_usd,decimal,fact_compras_logistica,Precio unitario en USD
-IMPORTE US,importe_usd,decimal,fact_compras_logistica,Importe total en USD
-TOTAL P.UNIT US$,total_punit_usd,decimal,fact_compras_logistica,Precio unitario total homologado en USD
-IMPORTE TOTAL US$,importe_total_usd,decimal,fact_compras_logistica,Importe total homologado en USD
-SOLICITANTE,area_solicitante,texto,dim_area,Area o solicitante del requerimiento
-REFERENCIA,referencia,texto,fact_compras_logistica,Referencia operativa o comentario
-PROVEEDOR,proveedor,texto,dim_proveedor,Nombre del proveedor
-FORMA DE PAGO,forma_pago,texto,fact_compras_logistica,Condicion o medio de pago
-ESTADO RECEPCION,estado_recepcion,texto,dim_estado,Estado de recepcion del pedido
-FECHA RECEPCION,fecha_recepcion,fecha,fact_compras_logistica,Fecha real de recepcion
-FECHA PROG ENTREGA,fecha_prog_entrega,fecha,fact_compras_logistica,Fecha programada de entrega
-NRO ORDEN DE COMPRA,nro_oc,texto,fact_compras_logistica,Numero de orden de compra
-FECHA OC,fecha_oc,fecha,fact_compras_logistica,Fecha de la orden de compra
-# GUIA,nro_guia,texto,fact_compras_logistica,Numero de guia
-# FACTURA,nro_factura,texto,fact_compras_logistica,Numero de factura
+﻿grupo,columna_excel,tipo_dato,nombre_tecnico,nombre_negocio,tabla_destino,observaciones
+identificacion,SEM,int,semana,SEMANA,fact_compras_logistica,Semana operativa reportada en la hoja
+identificacion,COD,string,codigo,CÓDIGO,fact_compras_logistica,Código del material o ítem comprado
+identificacion,MATERIAL,string,material,MATERIAL,fact_compras_logistica,Descripción del material
+identificacion,UND MED,string,unidad_medida,UNIDAD MEDIDA,fact_compras_logistica,En el archivo también puede aparecer como UNID MED
+identificacion,CANT.,decimal,cantidad,CANTIDAD,fact_compras_logistica,Conviene tratarla como número y no como texto
+presupuesto,PU SOLES,decimal,precio_unitario_soles,PRECIO UNITARIO SOLES,fact_compras_logistica,Subcolumna del bloque PRESUPUESTO (SIN IGV)
+presupuesto,IMPORTE SOLES,decimal,importe_soles,IMPORTE SOLES,fact_compras_logistica,Subcolumna del bloque PRESUPUESTO (SIN IGV)
+presupuesto,PU USD,decimal,precio_unitario_usd,PRECIO UNITARIO USD,fact_compras_logistica,Subcolumna del bloque PRESUPUESTO (SIN IGV)
+presupuesto,IMPORTE USD,decimal,importe_usd,IMPORTE USD,fact_compras_logistica,Subcolumna del bloque PRESUPUESTO (SIN IGV)
+presupuesto,TOTAL P.UNIT US$,decimal,total_precio_unit_usd,TOTAL PRECIO UNIT USD,fact_compras_logistica,Subcolumna del bloque PRESUPUESTO (SIN IGV)
+presupuesto,IMPORTE TOTAL US$,decimal,importe_total_usd,IMPORTE TOTAL USD,fact_compras_logistica,Subcolumna del bloque PRESUPUESTO (SIN IGV)
+operacion,SOLICITANTE,string,solicitante,SOLICITANTE,fact_compras_logistica,Base para análisis de costos por solicitante
+operacion,REFERENCIA,string,referencia,REFERENCIA,fact_compras_logistica,Detalle o contexto adicional de la compra
+operacion,PROVEEDOR,string,proveedor,PROVEEDOR,fact_compras_logistica,Base para ranking de proveedores
+operacion,FORMA DE PAGO,string,forma_pago,FORMA DE PAGO,fact_compras_logistica,Base para conteo de proveedores por forma de pago
+estado_oc,ESTADO RECEPCIÓN,string,estado_recepcion,ESTADO RECEPCIÓN,fact_compras_logistica,En el CSV real aparece como ESTADO RECEPCIÓN OC
+estado_oc,FECHA OC,date,fecha_oc,FECHA OC,fact_compras_logistica,Fecha de la orden de compra
+estado_oc,FECHA PROG ENTREGA,date,fecha_programada_entrega,FECHA PROGRAMADA ENTREGA,fact_compras_logistica,Fecha programada de entrega
+estado_oc,FECHA RECEPCIÓN,date,fecha_recepcion,FECHA RECEPCIÓN,fact_compras_logistica,Fecha real de recepción
+estado_oc,NRO ORDEN DE COMPRA,string,nro_oc,NRO OC,fact_compras_logistica,Conviene tratarla como texto aunque se vea numérica
+documentacion,# GUÍA,string,nro_guia,NRO GUÍA,fact_compras_logistica,Subcolumna del bloque ESTADO DOCUMENTACIÓN
+documentacion,# FACTURA,string,nro_factura,NRO FACTURA,fact_compras_logistica,Subcolumna del bloque ESTADO DOCUMENTACIÓN

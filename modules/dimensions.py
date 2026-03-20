@@ -1,4 +1,4 @@
-import pandas as pd
+﻿import pandas as pd
 
 from config import (
     AREA_DIM_NAME,
@@ -8,6 +8,13 @@ from config import (
     STATUS_DIM_NAME,
     SUPPLIER_DIM_NAME,
 )
+
+
+DATE_SOURCE_COLUMNS = [
+    "fecha_oc",
+    "fecha_recepcion",
+    "fecha_programada_entrega",
+]
 
 
 def _build_simple_dimension(
@@ -29,7 +36,7 @@ def _build_simple_dimension(
 def build_date_dimension(fact_df: pd.DataFrame) -> pd.DataFrame:
     date_frames = []
 
-    for source_column in ["fecha_oc", "fecha_recepcion", "fecha_prog_entrega"]:
+    for source_column in DATE_SOURCE_COLUMNS:
         if source_column not in fact_df.columns:
             continue
 
@@ -70,7 +77,7 @@ def build_date_dimension(fact_df: pd.DataFrame) -> pd.DataFrame:
 def build_dimensions(fact_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     dim_area = _build_simple_dimension(
         fact_df,
-        ["area_solicitante"],
+        ["solicitante"],
         ID_COLUMNS["area"],
     )
     dim_proveedor = _build_simple_dimension(
@@ -80,7 +87,7 @@ def build_dimensions(fact_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     )
     dim_material = _build_simple_dimension(
         fact_df,
-        ["cod_material", "material", "unidad_medida"],
+        ["codigo", "material", "unidad_medida"],
         ID_COLUMNS["material"],
     )
     dim_estado = _build_simple_dimension(

@@ -10,6 +10,7 @@ from config import (
     MAX_VALID_YEAR,
     MIN_VALID_YEAR,
     NUMERIC_COLUMNS,
+    SOURCE_ROW_COLUMN,
     TEXT_COLUMNS,
 )
 
@@ -17,6 +18,15 @@ from config import (
 EMPTY_TEXT_VALUES = {"", "NAN", "NONE", "<NA>"}
 TYPE_ERROR_FLAG_COLUMN = "_fila_tipo_invalido"
 TYPE_ERROR_DETAIL_COLUMN = "_detalle_tipos_invalidos"
+INVALID_DETAIL_SEPARATOR = ";;"
+INVALID_PART_SEPARATOR = "|"
+
+
+EXPECTED_TYPE_BY_COLUMN = {
+    **{column: "numero_decimal" for column in NUMERIC_COLUMNS},
+    **{column: "entero" for column in INTEGER_COLUMNS},
+    **{column: "fecha" for column in DATE_COLUMNS},
+}
 
 
 def _normalize_header(value: str) -> str:
@@ -40,23 +50,23 @@ def _clean_numeric_series(series: pd.Series) -> pd.Series:
     return pd.to_numeric(cleaned, errors="coerce")
 
 
-def _clean_numeric_column(series: pd.Series) -> tuple[pd.Series, pd.Series]:
+def _clean_numeric_column(series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     raw_values = _normalize_raw_series(series)
     cleaned = _clean_numeric_series(series)
     invalid_mask = raw_values.notna() & cleaned.isna()
-    return cleaned, invalid_mask
+    return cleaned, invalid_mask, raw_values
 
 
-def _clean_integer_column(series: pd.Series) -> tuple[pd.Series, pd.Series]:
+def _clean_integer_column(series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     raw_values = _normalize_raw_series(series)
     cleaned = _clean_numeric_series(series)
     non_integer_mask = cleaned.notna() & cleaned.mod(1).ne(0)
     invalid_mask = raw_values.notna() & (cleaned.isna() | non_integer_mask)
     cleaned = cleaned.mask(non_integer_mask)
-    return cleaned.astype("Int64"), invalid_mask
+    return cleaned.astype("Int64"), invalid_mask, raw_values
 
 
-def _clean_date_column(series: pd.Series) -> tuple[pd.Series, pd.Series]:
+def _clean_date_column(series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     raw_values = _normalize_raw_series(series)
     parsed = pd.to_datetime(series, errors="coerce", dayfirst=True)
     out_of_range_mask = parsed.notna() & ((parsed.dt.year < MIN_VALID_YEAR) | (parsed.dt.year > MAX_VALID_YEAR))
@@ -72,10 +82,19 @@ def _clean_date_column(series: pd.Series) -> tuple[pd.Series, pd.Series]:
         )
         parsed.loc[out_of_range_mask] = pd.NaT
 
-    return parsed, invalid_mask
+    return parsed, invalid_mask, raw_values
 
 
-def _build_invalid_type_columns(clean_df: pd.DataFrame, invalid_masks: dict[str, pd.Series]) -> pd.DataFrame:
+def _build_invalid_detail_series(column: str, raw_values: pd.Series, invalid_mask: pd.Series) -> pd.Series:
+    detail_series = pd.Series(pd.NA, index=raw_values.index, dtype="string")
+    expected_type = EXPECTED_TYPE_BY_COLUMN[column]
+    detail_series.loc[invalid_mask] = raw_values.loc[invalid_mask].apply(
+        lambda value: f"{column}{INVALID_PART_SEPARATOR}{expected_type}{INVALID_PART_SEPARATOR}{value}"
+    )
+    return detail_series
+
+
+def _build_invalid_type_columns(clean_df: pd.DataFrame, invalid_masks: dict[str, pd.Series], invalid_details: dict[str, pd.Series]) -> pd.DataFrame:
     if not invalid_masks:
         clean_df[TYPE_ERROR_FLAG_COLUMN] = False
         clean_df[TYPE_ERROR_DETAIL_COLUMN] = pd.NA
@@ -83,8 +102,10 @@ def _build_invalid_type_columns(clean_df: pd.DataFrame, invalid_masks: dict[str,
 
     invalid_matrix = pd.DataFrame(invalid_masks).fillna(False)
     clean_df[TYPE_ERROR_FLAG_COLUMN] = invalid_matrix.any(axis=1)
-    clean_df[TYPE_ERROR_DETAIL_COLUMN] = invalid_matrix.apply(
-        lambda row: "|".join([column for column, is_invalid in row.items() if bool(is_invalid)]),
+
+    detail_matrix = pd.DataFrame(invalid_details)
+    clean_df[TYPE_ERROR_DETAIL_COLUMN] = detail_matrix.apply(
+        lambda row: INVALID_DETAIL_SEPARATOR.join([str(value) for value in row.dropna()]),
         axis=1,
     ).astype("string")
     clean_df.loc[~clean_df[TYPE_ERROR_FLAG_COLUMN], TYPE_ERROR_DETAIL_COLUMN] = pd.NA
@@ -101,26 +122,31 @@ def clean_logistics_data(df: pd.DataFrame) -> pd.DataFrame:
     clean_df = df.copy()
     clean_df.columns = [_normalize_header(column) for column in clean_df.columns]
     clean_df = clean_df.rename(columns=COLUMN_MAPPING)
-    clean_df = clean_df.dropna(how="all").reset_index(drop=True)
+    subset_columns = [column for column in clean_df.columns if column != SOURCE_ROW_COLUMN]
+    clean_df = clean_df.dropna(how="all", subset=subset_columns).reset_index(drop=True)
 
     for column in TEXT_COLUMNS:
         if column in clean_df.columns:
             clean_df[column] = _normalize_raw_series(clean_df[column])
 
     invalid_masks: dict[str, pd.Series] = {}
+    invalid_details: dict[str, pd.Series] = {}
 
     for column in NUMERIC_COLUMNS:
         if column in clean_df.columns:
-            clean_df[column], invalid_masks[column] = _clean_numeric_column(clean_df[column])
+            clean_df[column], invalid_masks[column], raw_values = _clean_numeric_column(clean_df[column])
+            invalid_details[column] = _build_invalid_detail_series(column, raw_values, invalid_masks[column])
 
     for column in INTEGER_COLUMNS:
         if column in clean_df.columns:
-            clean_df[column], invalid_masks[column] = _clean_integer_column(clean_df[column])
+            clean_df[column], invalid_masks[column], raw_values = _clean_integer_column(clean_df[column])
+            invalid_details[column] = _build_invalid_detail_series(column, raw_values, invalid_masks[column])
 
     for column in DATE_COLUMNS:
         if column in clean_df.columns:
-            clean_df[column], invalid_masks[column] = _clean_date_column(clean_df[column])
+            clean_df[column], invalid_masks[column], raw_values = _clean_date_column(clean_df[column])
+            invalid_details[column] = _build_invalid_detail_series(column, raw_values, invalid_masks[column])
 
-    clean_df = _build_invalid_type_columns(clean_df, invalid_masks)
+    clean_df = _build_invalid_type_columns(clean_df, invalid_masks, invalid_details)
     logging.info("Columnas limpias y estandarizadas")
     return clean_df

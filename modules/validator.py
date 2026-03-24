@@ -2,10 +2,73 @@
 
 import pandas as pd
 
-from config import CRITICAL_FACT_COLUMNS, DATE_COLUMNS, FACT_TABLE_NAME, MAX_VALID_YEAR, MIN_VALID_YEAR
+from config import (
+    CRITICAL_FACT_COLUMNS,
+    DATE_COLUMNS,
+    DIMENSION_MATCH_RULES,
+    FACT_TABLE_NAME,
+    MAX_VALID_YEAR,
+    MIN_VALID_YEAR,
+)
 
 
 AUDIT_COLUMNS = ["tipo", "tabla", "campo", "valor", "detalle"]
+
+
+def _validate_dimension_keys(fact_df: pd.DataFrame) -> list[dict[str, object]]:
+    audit_rows: list[dict[str, object]] = []
+
+    for rule in DIMENSION_MATCH_RULES:
+        id_column = rule["id_column"]
+        natural_columns = rule["natural_columns"]
+        detalle = rule["detalle"]
+
+        if id_column not in fact_df.columns:
+            audit_rows.append(
+                {
+                    "tipo": "id_dimension_faltante",
+                    "tabla": FACT_TABLE_NAME,
+                    "campo": id_column,
+                    "valor": pd.NA,
+                    "detalle": detalle,
+                }
+            )
+            continue
+
+        available_natural_columns = [column for column in natural_columns if column in fact_df.columns]
+        if not available_natural_columns:
+            audit_rows.append(
+                {
+                    "tipo": "columnas_naturales_faltantes",
+                    "tabla": FACT_TABLE_NAME,
+                    "campo": id_column,
+                    "valor": pd.NA,
+                    "detalle": detalle,
+                }
+            )
+            continue
+
+        natural_match_mask = fact_df[available_natural_columns].notna().all(axis=1)
+        missing_id_count = int((natural_match_mask & fact_df[id_column].isna()).sum())
+
+        if missing_id_count:
+            logging.warning(
+                "Se detectaron %s filas donde %s quedo vacio pese a tener columnas naturales completas",
+                missing_id_count,
+                id_column,
+            )
+
+        audit_rows.append(
+            {
+                "tipo": "ids_dimension_sin_match",
+                "tabla": FACT_TABLE_NAME,
+                "campo": id_column,
+                "valor": missing_id_count,
+                "detalle": detalle,
+            }
+        )
+
+    return audit_rows
 
 
 def validate_tables(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
@@ -70,7 +133,7 @@ def validate_tables(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
         if column not in fact_df.columns:
             continue
 
-        valid_dates = fact_df[column].dropna()
+        valid_dates = pd.to_datetime(fact_df[column].dropna(), errors="coerce")
         out_of_range_count = int(((valid_dates.dt.year < MIN_VALID_YEAR) | (valid_dates.dt.year > MAX_VALID_YEAR)).sum())
         audit_rows.append(
             {
@@ -82,4 +145,5 @@ def validate_tables(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
             }
         )
 
+    audit_rows.extend(_validate_dimension_keys(fact_df))
     return pd.DataFrame(audit_rows, columns=AUDIT_COLUMNS)

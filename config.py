@@ -11,6 +11,16 @@ PROCESSED_AUDIT_DIR = PROCESSED_DIR / "Auditoria"
 DW_DIR = REPORT_ROOT / "DW"
 LOG_DIR = REPORT_ROOT / "LOGS"
 CONTROL_FILE = REPORT_ROOT / "control_procesamiento.csv"
+SOURCE_ROW_COLUMN = "_FILA_EXCEL"
+TRAILING_DATA_ANCHOR_COLUMNS = [
+    "COD",
+    "MATERIAL",
+    "UND MED",
+    "UNID MED",
+    "CANT.",
+    "SOLICITANTE",
+    "PROVEEDOR",
+]
 
 SOURCE_FILENAME = "PTTO 2026.xlsx"
 SOURCE_FILE = ORIGINAL_DIR / SOURCE_FILENAME
@@ -113,6 +123,49 @@ COST_COLUMNS = [
     "importe_usd",
 ]
 
+DIMENSION_MATCH_RULES = [
+    {
+        "id_column": "id_material",
+        "natural_columns": ["codigo", "material", "unidad_medida"],
+        "detalle": "match_dim_material",
+    },
+    {
+        "id_column": "id_area",
+        "natural_columns": ["solicitante"],
+        "detalle": "match_dim_area",
+    },
+    {
+        "id_column": "id_proveedor",
+        "natural_columns": ["proveedor"],
+        "detalle": "match_dim_proveedor",
+    },
+    {
+        "id_column": "id_forma_pago",
+        "natural_columns": ["forma_pago"],
+        "detalle": "match_dim_forma_pago",
+    },
+    {
+        "id_column": "id_estado",
+        "natural_columns": ["estado_recepcion"],
+        "detalle": "match_dim_estado",
+    },
+    {
+        "id_column": "id_fecha_oc",
+        "natural_columns": ["fecha_oc"],
+        "detalle": "match_dim_fecha_oc",
+    },
+    {
+        "id_column": "id_fecha_programada_entrega",
+        "natural_columns": ["fecha_programada_entrega"],
+        "detalle": "match_dim_fecha_programada_entrega",
+    },
+    {
+        "id_column": "id_fecha_recepcion",
+        "natural_columns": ["fecha_recepcion"],
+        "detalle": "match_dim_fecha_recepcion",
+    },
+]
+
 COLUMN_MAPPING = {
     "SEM": "semana",
     "COD": "codigo",
@@ -197,5 +250,13 @@ REVIEW_COLUMN_ORDER = [
     "nro_guia",
     "nro_factura",
     "comentarios",
+    "id_compra",
+    "id_material",
+    "id_area",
+    "id_proveedor",
+    "id_forma_pago",
+    "id_estado",
+    "id_fecha_oc",
+    "id_fecha_programada_entrega",
+    "id_fecha_recepcion",
 ]
-

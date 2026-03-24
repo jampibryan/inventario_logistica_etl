@@ -57,7 +57,7 @@ def run_etl(force: bool = False) -> dict[str, pd.DataFrame]:
     tables = {"fact_compras_logistica": fact_df, **dims}
     audit_df = validate_tables(tables)
     audit_df = pd.concat([audit_df, filter_audit_df], ignore_index=True)
-    export_review_outputs(fact_valid_df, audit_df, source_file)
+    export_review_outputs(fact_df, audit_df, source_file)
     export_tables(tables, export_csv=EXPORT_CSV, export_parquet=EXPORT_PARQUET)
     update_control_file(
         source_file=source_file,
@@ -95,3 +95,4 @@ if __name__ == "__main__":
             message=str(exc),
         )
         raise
+

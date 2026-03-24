@@ -2,12 +2,15 @@
 
 import pandas as pd
 
-from config import COST_COLUMNS, DATE_KEY_COLUMNS, ID_COLUMNS, REQUIRED_FACT_COLUMNS
+from config import COST_COLUMNS, DATE_KEY_COLUMNS, ID_COLUMNS, REQUIRED_FACT_COLUMNS, SOURCE_ROW_COLUMN
 
 
 TYPE_ERROR_FLAG_COLUMN = "_fila_tipo_invalido"
 TYPE_ERROR_DETAIL_COLUMN = "_detalle_tipos_invalidos"
-FACT_INTERNAL_COLUMNS = [TYPE_ERROR_FLAG_COLUMN, TYPE_ERROR_DETAIL_COLUMN]
+INVALID_DETAIL_SEPARATOR = ";;"
+INVALID_PART_SEPARATOR = "|"
+LOG_SEPARATOR = "-------------------------------------------------"
+FACT_INTERNAL_COLUMNS = [SOURCE_ROW_COLUMN, TYPE_ERROR_FLAG_COLUMN, TYPE_ERROR_DETAIL_COLUMN]
 
 FACT_COLUMNS = [
     "id_compra",
@@ -70,84 +73,164 @@ def build_fact_table(df: pd.DataFrame) -> pd.DataFrame:
     return fact_df[FACT_COLUMNS + FACT_INTERNAL_COLUMNS].copy()
 
 
-def _build_type_audit_rows(fact_df: pd.DataFrame) -> list[dict[str, object]]:
+def _log_section(title: str, lines: list[str]) -> None:
+    if not lines:
+        return
+
+    logging.warning(LOG_SEPARATOR)
+    logging.warning(title)
+    logging.warning(LOG_SEPARATOR)
+    for line in lines:
+        logging.warning(line)
+
+
+def _excel_row_label(row: pd.Series) -> str:
+    row_number = row.get(SOURCE_ROW_COLUMN, pd.NA)
+    if pd.isna(row_number):
+        return "Fila desconocida"
+    return f"Fila Excel {int(row_number)}"
+
+
+def _build_type_issue_lines(fact_df: pd.DataFrame) -> tuple[list[str], list[dict[str, object]]]:
     if TYPE_ERROR_DETAIL_COLUMN not in fact_df.columns:
-        return []
+        return [], []
 
-    details = fact_df[TYPE_ERROR_DETAIL_COLUMN].dropna().astype("string")
-    if details.empty:
-        return []
+    issue_lines: list[str] = []
+    audit_rows: list[dict[str, object]] = []
 
-    invalid_counts = details.str.split("|", regex=False).explode().value_counts()
-    return [
-        {
-            "tipo": "tipos_invalidos_campo",
-            "tabla": "fact_compras_logistica",
-            "campo": column,
-            "valor": int(count),
-            "detalle": "filas_descartadas_por_tipo_invalido",
-        }
-        for column, count in invalid_counts.items()
-    ]
+    invalid_rows = fact_df.loc[fact_df[TYPE_ERROR_FLAG_COLUMN].fillna(False)].copy()
+    if invalid_rows.empty:
+        return issue_lines, audit_rows
+
+    for _, row in invalid_rows.iterrows():
+        detail_text = row.get(TYPE_ERROR_DETAIL_COLUMN, pd.NA)
+        if pd.isna(detail_text):
+            continue
+
+        for item in str(detail_text).split(INVALID_DETAIL_SEPARATOR):
+            parts = item.split(INVALID_PART_SEPARATOR, 2)
+            if len(parts) != 3:
+                continue
+            column, expected_type, original_value = parts
+            issue_lines.append(
+                f"{_excel_row_label(row)} | Columna: {column} | Esperado: {expected_type} | Valor original: {original_value}"
+            )
+            audit_rows.append(
+                {
+                    "tipo": "fila_con_tipo_invalido",
+                    "tabla": "fact_compras_logistica",
+                    "campo": column,
+                    "valor": row.get(SOURCE_ROW_COLUMN, pd.NA),
+                    "detalle": f"esperado={expected_type}; valor_original={original_value}",
+                }
+            )
+
+    return issue_lines, audit_rows
+
+
+def _build_missing_required_lines(fact_df: pd.DataFrame) -> tuple[list[str], list[dict[str, object]]]:
+    issue_lines: list[str] = []
+    audit_rows: list[dict[str, object]] = []
+
+    for _, row in fact_df.iterrows():
+        for column in REQUIRED_FACT_COLUMNS:
+            if column in fact_df.columns and pd.isna(row[column]):
+                issue_lines.append(f"{_excel_row_label(row)} | Columna requerida vacia: {column}")
+                audit_rows.append(
+                    {
+                        "tipo": "fila_con_requerido_vacio",
+                        "tabla": "fact_compras_logistica",
+                        "campo": column,
+                        "valor": row.get(SOURCE_ROW_COLUMN, pd.NA),
+                        "detalle": "campo_requerido_para_analisis",
+                    }
+                )
+
+    return issue_lines, audit_rows
+
+
+def _build_missing_cost_lines(fact_df: pd.DataFrame) -> tuple[list[str], list[dict[str, object]]]:
+    issue_lines: list[str] = []
+    audit_rows: list[dict[str, object]] = []
+
+    missing_cost_mask = ~fact_df[COST_COLUMNS].notna().any(axis=1)
+    missing_cost_rows = fact_df.loc[missing_cost_mask]
+
+    for _, row in missing_cost_rows.iterrows():
+        issue_lines.append(
+            f"{_excel_row_label(row)} | Sin importe informado en las columnas: {', '.join(COST_COLUMNS)}"
+        )
+        audit_rows.append(
+            {
+                "tipo": "fila_sin_importe",
+                "tabla": "fact_compras_logistica",
+                "campo": pd.NA,
+                "valor": row.get(SOURCE_ROW_COLUMN, pd.NA),
+                "detalle": "sin_importe_soles_ni_importe_usd",
+            }
+        )
+
+    return issue_lines, audit_rows
 
 
 def filter_valid_fact_rows(fact_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Keep only rows valid enough for dashboard consumption."""
-    if TYPE_ERROR_FLAG_COLUMN in fact_df.columns:
-        type_mask = ~fact_df[TYPE_ERROR_FLAG_COLUMN].fillna(False)
-    else:
-        type_mask = pd.Series(True, index=fact_df.index)
-
+    """Reporta observaciones de calidad sin descartar filas de la fact."""
+    type_mask = ~fact_df[TYPE_ERROR_FLAG_COLUMN].fillna(False) if TYPE_ERROR_FLAG_COLUMN in fact_df.columns else pd.Series(True, index=fact_df.index)
     required_mask = fact_df[REQUIRED_FACT_COLUMNS].notna().all(axis=1)
     cost_mask = fact_df[COST_COLUMNS].notna().any(axis=1)
-    valid_mask = type_mask & required_mask & cost_mask
 
-    invalid_type = int((~type_mask).sum())
-    invalid_required = int((type_mask & ~required_mask).sum())
-    invalid_cost = int((type_mask & required_mask & ~cost_mask).sum())
-    dropped_rows = int((~valid_mask).sum())
+    type_issue_lines, type_issue_audit = _build_type_issue_lines(fact_df)
+    missing_required_lines, missing_required_audit = _build_missing_required_lines(fact_df)
+    missing_cost_lines, missing_cost_audit = _build_missing_cost_lines(fact_df)
 
-    if dropped_rows:
-        logging.warning(
-            "Se descartaron %s filas de la fact por calidad de datos para el dashboard",
-            dropped_rows,
-        )
+    _log_section("VALIDACIONES DE TIPOS DE DATO", type_issue_lines)
+    _log_section("CAMPOS REQUERIDOS VACIOS", missing_required_lines)
+    _log_section("FILAS SIN IMPORTES PARA ANALISIS", missing_cost_lines)
 
-    filtered_df = fact_df.loc[valid_mask].copy().reset_index(drop=True)
-    filtered_df[ID_COLUMNS["fact"]] = range(1, len(filtered_df) + 1)
-    filtered_df = filtered_df.drop(columns=FACT_INTERNAL_COLUMNS, errors="ignore")
+    observed_issue_rows = int((~type_mask | ~required_mask | ~cost_mask).sum())
+    logging.warning(LOG_SEPARATOR)
+    logging.warning("RESUMEN DE OBSERVACIONES DE CALIDAD")
+    logging.warning(LOG_SEPARATOR)
+    logging.warning("Filas con tipos invalidos: %s", int((~type_mask).sum()))
+    logging.warning("Filas con requeridos vacios: %s", int((~required_mask).sum()))
+    logging.warning("Filas sin importes: %s", int((~cost_mask).sum()))
+    logging.warning("Filas observadas con al menos una incidencia: %s", observed_issue_rows)
+
+    output_df = fact_df.drop(columns=FACT_INTERNAL_COLUMNS, errors="ignore").copy().reset_index(drop=True)
+    output_df[ID_COLUMNS["fact"]] = range(1, len(output_df) + 1)
 
     audit_payload = [
         {
-            "tipo": "filas_descartadas",
+            "tipo": "filas_observadas_total",
             "tabla": "fact_compras_logistica",
             "campo": pd.NA,
-            "valor": dropped_rows,
-            "detalle": "filas_excluidas_por_reglas_dashboard",
+            "valor": observed_issue_rows,
+            "detalle": "filas_con_alguna_incidencia",
         },
         {
-            "tipo": "filas_descartadas_tipo",
+            "tipo": "filas_con_tipo_invalido",
             "tabla": "fact_compras_logistica",
             "campo": pd.NA,
-            "valor": invalid_type,
+            "valor": int((~type_mask).sum()),
             "detalle": "tipos_de_dato_invalidos",
         },
         {
-            "tipo": "filas_descartadas_requeridos",
+            "tipo": "filas_con_requeridos_vacios",
             "tabla": "fact_compras_logistica",
             "campo": pd.NA,
-            "valor": invalid_required,
+            "valor": int((~required_mask).sum()),
             "detalle": "faltan_campos_requeridos",
         },
         {
-            "tipo": "filas_descartadas_importes",
+            "tipo": "filas_sin_importes",
             "tabla": "fact_compras_logistica",
             "campo": pd.NA,
-            "valor": invalid_cost,
+            "valor": int((~cost_mask).sum()),
             "detalle": "sin_importe_soles_ni_importe_usd",
         },
-        *_build_type_audit_rows(fact_df),
+        *type_issue_audit,
+        *missing_required_audit,
+        *missing_cost_audit,
     ]
     audit_rows = pd.DataFrame(audit_payload, columns=AUDIT_COLUMNS)
-    return filtered_df, audit_rows
-
+    return output_df, audit_rows

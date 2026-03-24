@@ -98,16 +98,21 @@ def export_review_outputs(clean_df: pd.DataFrame, audit_df: pd.DataFrame, source
     clean_output_path = PROCESSED_EXCEL_DIR / REVIEW_EXCEL_NAME
     audit_output_path = PROCESSED_AUDIT_DIR / AUDIT_EXCEL_NAME
 
-    with pd.ExcelWriter(clean_output_path, engine="openpyxl") as writer:
-        review_df.to_excel(writer, index=False, sheet_name="datos")
-        worksheet = writer.sheets["datos"]
-        _apply_excel_date_format(worksheet, list(review_df.columns))
+    try:
+        with pd.ExcelWriter(clean_output_path, engine="openpyxl") as writer:
+            review_df.to_excel(writer, index=False, sheet_name="datos")
+            worksheet = writer.sheets["datos"]
+            _apply_excel_date_format(worksheet, list(review_df.columns))
+        logging.info("Excel limpio generado: %s", clean_output_path.name)
+    except PermissionError:
+        logging.warning("No se pudo escribir %s porque esta abierto en otro proceso", clean_output_path.name)
 
-    with pd.ExcelWriter(audit_output_path, engine="openpyxl") as writer:
-        audit_df.to_excel(writer, sheet_name="resumen", index=False)
-
-    logging.info("Excel limpio generado: %s", clean_output_path.name)
-    logging.info("Auditoria generada: %s", audit_output_path.name)
+    try:
+        with pd.ExcelWriter(audit_output_path, engine="openpyxl") as writer:
+            audit_df.to_excel(writer, sheet_name="resumen", index=False)
+        logging.info("Auditoria generada: %s", audit_output_path.name)
+    except PermissionError:
+        logging.warning("No se pudo escribir %s porque esta abierto en otro proceso", audit_output_path.name)
 
 
 def export_tables(

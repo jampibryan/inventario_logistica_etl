@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import SOURCE_FILE, SOURCE_SHEET
+from config import SOURCE_FILE, SOURCE_ROW_COLUMN, SOURCE_SHEET, TRAILING_DATA_ANCHOR_COLUMNS
+
+
+FIRST_DATA_ROW_IN_EXCEL = 4
+EMPTY_TEXT_VALUES = {"", "NAN", "NONE", "<NA>"}
 
 
 def _normalize_header_token(value: object) -> str:
@@ -15,6 +19,17 @@ def _normalize_header_token(value: object) -> str:
     text = re.sub(r"\s+", " ", text)
     if text.startswith("UNNAMED"):
         return ""
+    return text
+
+
+def _normalize_cell_value(value: object) -> str | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+
+    text = str(value).strip().upper()
+    text = re.sub(r"\s+", " ", text)
+    if text in EMPTY_TEXT_VALUES:
+        return None
     return text
 
 
@@ -61,6 +76,34 @@ def _collapse_duplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
     return collapsed_df
 
 
+def _trim_trailing_blank_rows(df: pd.DataFrame) -> pd.DataFrame:
+    available_anchor_columns = [column for column in TRAILING_DATA_ANCHOR_COLUMNS if column in df.columns]
+    if not available_anchor_columns:
+        logging.warning("No se encontraron columnas ancla para recortar filas vacias al final")
+        return df
+
+    normalized_anchor_df = df[available_anchor_columns].apply(lambda column: column.map(_normalize_cell_value))
+    anchor_presence = normalized_anchor_df.notna().any(axis=1)
+
+    if not anchor_presence.any():
+        logging.warning("No se detectaron registros utiles usando las columnas ancla; se conserva la hoja completa")
+        return df
+
+    last_valid_position = anchor_presence[anchor_presence].index.max()
+    trimmed_rows = len(df) - (last_valid_position + 1)
+    trimmed_df = df.iloc[: last_valid_position + 1].copy()
+
+    if trimmed_rows > 0:
+        last_excel_row = int(trimmed_df.iloc[-1][SOURCE_ROW_COLUMN])
+        logging.info(
+            "Se recortaron %s filas vacias al final de la hoja. Ultima fila util detectada: %s",
+            trimmed_rows,
+            last_excel_row,
+        )
+
+    return trimmed_df
+
+
 def extract_budget_sheet() -> tuple[Path, pd.DataFrame]:
     """Read the source Excel using the two-row business header."""
     if not SOURCE_FILE.exists():
@@ -77,6 +120,8 @@ def extract_budget_sheet() -> tuple[Path, pd.DataFrame]:
     df.columns = _flatten_excel_headers(df.columns)
     df = df.loc[:, [column for column in df.columns if column]].copy()
     df = _collapse_duplicate_columns(df)
-    df = df.dropna(how="all").reset_index(drop=True)
+    df.insert(0, SOURCE_ROW_COLUMN, range(FIRST_DATA_ROW_IN_EXCEL, FIRST_DATA_ROW_IN_EXCEL + len(df)))
+    df = _trim_trailing_blank_rows(df)
+    df = df.dropna(how="all", subset=[column for column in df.columns if column != SOURCE_ROW_COLUMN]).reset_index(drop=True)
     logging.info("Filas leidas: %s | Columnas utiles leidas: %s", len(df), len(df.columns))
     return SOURCE_FILE, df

@@ -18,6 +18,31 @@ DATE_SOURCE_COLUMNS = [
     "fecha_programada_entrega",
 ]
 
+MONTH_NAMES_ES = {
+    1: "Enero",
+    2: "Febrero",
+    3: "Marzo",
+    4: "Abril",
+    5: "Mayo",
+    6: "Junio",
+    7: "Julio",
+    8: "Agosto",
+    9: "Septiembre",
+    10: "Octubre",
+    11: "Noviembre",
+    12: "Diciembre",
+}
+
+DAY_NAMES_ES = {
+    0: "Lunes",
+    1: "Martes",
+    2: "Miércoles",
+    3: "Jueves",
+    4: "Viernes",
+    5: "Sábado",
+    6: "Domingo",
+}
+
 KEY_COLUMNS = [
     ID_COLUMNS["material"],
     ID_COLUMNS["area"],
@@ -26,6 +51,14 @@ KEY_COLUMNS = [
     ID_COLUMNS["forma_pago"],
     *DATE_KEY_COLUMNS.values(),
 ]
+
+
+def _cast_nullable_integer_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    result_df = df.copy()
+    for column in columns:
+        if column in result_df.columns:
+            result_df[column] = result_df[column].astype("Int64")
+    return result_df
 
 
 def _build_simple_dimension(
@@ -41,7 +74,7 @@ def _build_simple_dimension(
         .copy()
     )
     dim_df.insert(0, id_column, range(1, len(dim_df) + 1))
-    return dim_df
+    return _cast_nullable_integer_columns(dim_df, [id_column])
 
 
 def build_date_dimension(fact_df: pd.DataFrame) -> pd.DataFrame:
@@ -66,6 +99,12 @@ def build_date_dimension(fact_df: pd.DataFrame) -> pd.DataFrame:
                 "anio",
                 "mes",
                 "nombre_mes",
+                "anio_mes",
+                "anio_mes_orden",
+                "anio_mes_nombre",
+                "semana_mes",
+                "semana_mes_nombre",
+                "semana_mes_orden",
                 "trimestre",
                 "semana_iso",
                 "dia",
@@ -74,15 +113,24 @@ def build_date_dimension(fact_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     dim_fecha = pd.concat(date_frames, ignore_index=True).drop_duplicates().sort_values("fecha")
-    dim_fecha["anio"] = dim_fecha["fecha"].dt.year
-    dim_fecha["mes"] = dim_fecha["fecha"].dt.month
-    dim_fecha["nombre_mes"] = dim_fecha["fecha"].dt.strftime("%B")
-    dim_fecha["trimestre"] = dim_fecha["fecha"].dt.quarter
+    dim_fecha["anio"] = dim_fecha["fecha"].dt.year.astype("Int64")
+    dim_fecha["mes"] = dim_fecha["fecha"].dt.month.astype("Int64")
+    dim_fecha["nombre_mes"] = dim_fecha["mes"].map(MONTH_NAMES_ES).astype("string")
+    dim_fecha["anio_mes"] = dim_fecha["fecha"].dt.strftime("%Y-%m").astype("string")
+    dim_fecha["anio_mes_orden"] = (dim_fecha["anio"] * 100 + dim_fecha["mes"]).astype("Int64")
+    dim_fecha["anio_mes_nombre"] = (dim_fecha["nombre_mes"] + " " + dim_fecha["anio"].astype("string")).astype("string")
+    dim_fecha["dia"] = dim_fecha["fecha"].dt.day.astype("Int64")
+    dim_fecha["semana_mes"] = (((dim_fecha["dia"] - 1) // 7) + 1).clip(upper=4).astype("Int64")
+    dim_fecha["semana_mes_nombre"] = ("Semana " + dim_fecha["semana_mes"].astype("string")).astype("string")
+    dim_fecha["semana_mes_orden"] = dim_fecha["semana_mes"].astype("Int64")
+    dim_fecha["trimestre"] = dim_fecha["fecha"].dt.quarter.astype("Int64")
     dim_fecha["semana_iso"] = dim_fecha["fecha"].dt.isocalendar().week.astype("Int64")
-    dim_fecha["dia"] = dim_fecha["fecha"].dt.day
-    dim_fecha["dia_semana"] = dim_fecha["fecha"].dt.strftime("%A")
+    dim_fecha["dia_semana"] = dim_fecha["fecha"].dt.dayofweek.map(DAY_NAMES_ES).astype("string")
     dim_fecha.insert(0, "id_fecha", range(1, len(dim_fecha) + 1))
-    return dim_fecha.reset_index(drop=True)
+    return _cast_nullable_integer_columns(
+        dim_fecha.reset_index(drop=True),
+        ["id_fecha", "anio", "mes", "anio_mes_orden", "semana_mes", "semana_mes_orden", "trimestre", "semana_iso", "dia"],
+    )
 
 
 def _assign_simple_key(
@@ -92,17 +140,18 @@ def _assign_simple_key(
     id_column: str,
 ) -> pd.DataFrame:
     if dim_df.empty:
-        fact_df[id_column] = pd.NA
+        fact_df[id_column] = pd.Series(pd.NA, index=fact_df.index, dtype="Int64")
         return fact_df
 
     merge_columns = natural_columns + [id_column]
-    return fact_df.merge(dim_df[merge_columns], on=natural_columns, how="left")
+    merged_df = fact_df.merge(dim_df[merge_columns], on=natural_columns, how="left")
+    return _cast_nullable_integer_columns(merged_df, [id_column])
 
 
 def _assign_date_keys(fact_df: pd.DataFrame, dim_fecha: pd.DataFrame) -> pd.DataFrame:
     if dim_fecha.empty:
         for id_column in DATE_KEY_COLUMNS.values():
-            fact_df[id_column] = pd.NA
+            fact_df[id_column] = pd.Series(pd.NA, index=fact_df.index, dtype="Int64")
         return fact_df
 
     result_df = fact_df.copy()
@@ -111,6 +160,7 @@ def _assign_date_keys(fact_df: pd.DataFrame, dim_fecha: pd.DataFrame) -> pd.Data
     for source_column, id_column in DATE_KEY_COLUMNS.items():
         current_lookup = date_lookup.rename(columns={"fecha": source_column, "id_fecha": id_column})
         result_df = result_df.merge(current_lookup, on=source_column, how="left")
+        result_df = _cast_nullable_integer_columns(result_df, [id_column])
 
     return result_df
 
@@ -150,13 +200,16 @@ def build_dimensions(fact_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, pd.
     enriched_fact = _assign_simple_key(enriched_fact, dim_estado, ["estado_recepcion"], ID_COLUMNS["estado"])
     enriched_fact = _assign_simple_key(enriched_fact, dim_forma_pago, ["forma_pago"], ID_COLUMNS["forma_pago"])
     enriched_fact = _assign_date_keys(enriched_fact, dim_fecha)
+    enriched_fact = _cast_nullable_integer_columns(enriched_fact, [ID_COLUMNS["fact"], *KEY_COLUMNS])
 
     dimensions = {
-        DATE_DIM_NAME: dim_fecha,
-        AREA_DIM_NAME: dim_area,
-        SUPPLIER_DIM_NAME: dim_proveedor,
-        MATERIAL_DIM_NAME: dim_material,
-        STATUS_DIM_NAME: dim_estado,
-        PAYMENT_DIM_NAME: dim_forma_pago,
+        DATE_DIM_NAME: _cast_nullable_integer_columns(dim_fecha, ["id_fecha", "anio", "mes", "trimestre", "semana_iso", "dia"]),
+        AREA_DIM_NAME: _cast_nullable_integer_columns(dim_area, [ID_COLUMNS["area"]]),
+        SUPPLIER_DIM_NAME: _cast_nullable_integer_columns(dim_proveedor, [ID_COLUMNS["proveedor"]]),
+        MATERIAL_DIM_NAME: _cast_nullable_integer_columns(dim_material, [ID_COLUMNS["material"]]),
+        STATUS_DIM_NAME: _cast_nullable_integer_columns(dim_estado, [ID_COLUMNS["estado"]]),
+        PAYMENT_DIM_NAME: _cast_nullable_integer_columns(dim_forma_pago, [ID_COLUMNS["forma_pago"]]),
     }
     return enriched_fact, dimensions
+
+
